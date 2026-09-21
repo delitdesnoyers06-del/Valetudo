@@ -31,6 +31,14 @@ class RoborockV1ValetudoRobot extends RoborockValetudoRobot {
             filePath: RoborockV1ValetudoRobot.MAP_STORE_PATH
         });
 
+        /**
+         * Last anchor we warned about; keeps the map poll from spamming the log
+         *
+         * @private
+         * @type {string|undefined}
+         */
+        this.lastFloorKeyWarning = undefined;
+
         [
             capabilities.RoborockV1PersistentMapControlCapability,
             capabilities.RoborockV1MapSegmentationCapability,
@@ -74,17 +82,24 @@ class RoborockV1ValetudoRobot extends RoborockValetudoRobot {
         }
 
         const floorKey = RoborockV1MapStore.floorKeyForMap(map);
+        const storedFloorKey = this.mapStore.getFloorKey();
 
         if (floorKey) {
-            if (!this.mapStore.getFloorKey()) {
+            if (!storedFloorKey) {
                 this.mapStore.setFloorKey(floorKey);
-            } else if (this.mapStore.getFloorKey() !== floorKey) {
-                // Non-destructive on purpose: if the charger anchor moved, the stored rooms may no longer
-                // line up, but we never delete the user's data automatically (handoff doubt #2).
-                Logger.warn(
-                    "Gen1 map store: charger anchor moved (stored " + this.mapStore.getFloorKey() + "), " +
-                    "stored rooms may no longer line up. Rooms are kept; verify or reset them."
-                );
+            } else if (!RoborockV1MapStore.floorKeysMatch(storedFloorKey, floorKey)) {
+                // Non-destructive on purpose: if the charger anchor really moved (e.g. another floor),
+                // the stored rooms may no longer line up, but we never delete the user's data
+                // automatically (handoff doubt #2). Warn once per observed anchor so that the frequent
+                // map polls (every few seconds while cleaning) cannot spam the log.
+                if (this.lastFloorKeyWarning !== floorKey) {
+                    this.lastFloorKeyWarning = floorKey;
+
+                    Logger.warn(
+                        "Gen1 map store: charger anchor moved (stored " + storedFloorKey + ", observed " + floorKey + "). " +
+                        "Stored rooms may no longer line up; they are kept, verify or reset them."
+                    );
+                }
             }
         }
 

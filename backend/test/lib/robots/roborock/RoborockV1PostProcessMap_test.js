@@ -5,6 +5,7 @@ const path = require("node:path");
 const { afterEach, beforeEach, describe, it } = require("node:test");
 
 const capabilities = require("../../../../lib/robots/roborock/capabilities");
+const Logger = require("../../../../lib/Logger");
 const MapLayer = require("../../../../lib/entities/map/MapLayer");
 const PointMapEntity = require("../../../../lib/entities/map/entities/PointMapEntity");
 const RoborockV1MapStore = require("../../../../lib/robots/roborock/RoborockV1MapStore");
@@ -41,6 +42,8 @@ function buildMap(options = {}) {
         pixels: [504, 504]
     }));
 
+    const chargerPoint = options.chargerPoint ?? CHARGER_POINT;
+
     return new ValetudoMap({
         size: {x: 5120, y: 5120},
         pixelSize: 5,
@@ -48,7 +51,7 @@ function buildMap(options = {}) {
         entities: [
             new PointMapEntity({
                 type: PointMapEntity.TYPE.CHARGER_LOCATION,
-                points: CHARGER_POINT
+                points: chargerPoint
             })
         ],
         metaData: options.defaultMap === true ? {defaultMap: true} : {}
@@ -157,6 +160,40 @@ describe("RoborockV1 map pipeline", () => {
             RoborockV1ValetudoRobot.prototype.postProcessMap.call({mapStore: store}, map);
 
             assert.strictEqual(map.getSegments().length, 0);
+        });
+
+        it("absorbs the charger jitter and warns only once per observed anchor", () => {
+            store.setFloorKey("charger:2560,2532");
+
+            assert.strictEqual(RoborockV1MapStore.floorKeysMatch("charger:2560,2532", "charger:2565,2533"), true);
+            assert.strictEqual(RoborockV1MapStore.floorKeysMatch("charger:2560,2532", "charger:3500,3500"), false);
+            assert.strictEqual(RoborockV1MapStore.floorKeysMatch(undefined, "charger:1,1"), false);
+            assert.strictEqual(RoborockV1MapStore.floorKeysMatch("nonsense", "charger:1,1"), false);
+
+            const warnings = [];
+            const originalWarn = Logger.warn;
+            Logger.warn = message => {
+                warnings.push(message);
+            };
+
+            try {
+                const robot = {mapStore: store};
+
+                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, buildMap({chargerPoint: [2565, 2533]}));
+                assert.deepStrictEqual(warnings, [], "a one pixel charger jitter must not warn");
+
+                const movedMap = buildMap({chargerPoint: [3500, 3500]});
+                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, movedMap);
+                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, movedMap);
+                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, movedMap);
+
+                assert.strictEqual(warnings.length, 1, "warn once per observed anchor, not on every map poll");
+                assert.match(warnings[0], /charger anchor moved/);
+                assert.match(warnings[0], /observed charger:3500,3500/);
+                assert.strictEqual(store.getFloorKey(), "charger:2560,2532", "the stored anchor and the rooms are kept");
+            } finally {
+                Logger.warn = originalWarn;
+            }
         });
 
         it("does not overlay a map which has no floor layer", () => {

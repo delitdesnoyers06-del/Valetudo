@@ -584,6 +584,36 @@ class RoborockV1MapStore {
     }
 
     /**
+     * Compares two floor keys (see floorKeyForMap) with a tolerance. The charger position reported
+     * by the Gen 1 SLAM jitters by a pixel (5 cm) between polls, so an exact string comparison
+     * would report a "different floor" every time. A real move (another floor) shifts the anchor
+     * by meters, so the default tolerance still detects it.
+     *
+     * @public
+     * @param {string|undefined} a
+     * @param {string|undefined} b
+     * @param {number} [tolerance] in cm
+     * @returns {boolean} true if both keys point at (roughly) the same spot
+     */
+    static floorKeysMatch(a, b, tolerance = RoborockV1MapStore.FLOOR_KEY_DRIFT_TOLERANCE_CM) {
+        const parseFloorKey = key => {
+            const match = /^charger:(-?\d+),(-?\d+)$/.exec(typeof key === "string" ? key : "");
+
+            return match ? {x: Number(match[1]), y: Number(match[2])} : undefined;
+        };
+
+        const parsedA = parseFloorKey(a);
+        const parsedB = parseFloorKey(b);
+
+        if (!parsedA || !parsedB) {
+            return false;
+        }
+
+        return Math.abs(parsedA.x - parsedB.x) <= tolerance &&
+            Math.abs(parsedA.y - parsedB.y) <= tolerance;
+    }
+
+    /**
      * @private
      * @returns {RoborockV1MapStoreData}
      */
@@ -848,6 +878,9 @@ class RoborockV1MapStore {
 RoborockV1MapStore.VERSION = 1;
 
 RoborockV1MapStore.MAX_SNAPSHOTS = 3;
+
+/** A charger anchor that moved by more than this (cm) is treated as a different floor */
+RoborockV1MapStore.FLOOR_KEY_DRIFT_TOLERANCE_CM = 20;
 
 module.exports = RoborockV1MapStore;
 
