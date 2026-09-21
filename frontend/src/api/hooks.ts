@@ -59,6 +59,7 @@ import {
     sendCombinedVirtualRestrictionsUpdate,
     sendConsumableReset,
     sendCreateSegmentCommand,
+    sendDeleteSegmentCommand,
     sendDoNotDisturbConfiguration,
     sendGoToCommand,
     sendHTTPBasicAuthConfiguration,
@@ -646,6 +647,25 @@ export const useCreateSegmentMutation = (
     return useMutation({
         mutationFn: (parameters: MapSegmentCreationRequestParameters) => {
             return sendCreateSegmentCommand(parameters);
+        },
+        ...options,
+
+        onError: useOnCommandError(Capability.MapSegmentation),
+        onSuccess: async (data, ...args) => {
+            await queryClient.invalidateQueries({ queryKey: [QueryKey.Segments] });
+            await options?.onSuccess?.(data, ...args);
+        },
+    });
+};
+
+export const useDeleteSegmentMutation = (
+    options?: UseMutationOptions<void, unknown, string>
+) => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (segmentId: string) => {
+            return sendDeleteSegmentCommand(segmentId);
         },
         ...options,
 

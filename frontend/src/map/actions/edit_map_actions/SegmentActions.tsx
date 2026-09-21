@@ -6,6 +6,7 @@ import {
     useCombinedVirtualRestrictionsMutation,
     useCombinedVirtualRestrictionsQuery,
     useCreateSegmentMutation,
+    useDeleteSegmentMutation,
     useJoinSegmentsMutation,
     useMapSegmentationPropertiesQuery,
     useMapSegmentMaterialControlPropertiesQuery,
@@ -40,6 +41,7 @@ import {
     Clear as ClearIcon,
     ContentCut as SplitIcon,
     Dashboard as MaterialIcon,
+    Delete as DeleteIcon,
     JoinFull as JoinIcon,
 } from "@mui/icons-material";
 import {AddCuttingLineIcon, RenameIcon} from "../../../components/CustomIcons";
@@ -366,6 +368,7 @@ const SegmentActions = (
     const [renameDialogOpen, setRenameDialogOpen] = React.useState(false);
     const [materialDialogOpen, setMaterialDialogOpen] = React.useState(false);
     const [createRoomDialogOpen, setCreateRoomDialogOpen] = React.useState(false);
+    const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
 
     const {
         mutate: joinSegments,
@@ -400,6 +403,12 @@ const SegmentActions = (
     const {
         mutate: saveRestrictions
     } = useCombinedVirtualRestrictionsMutation();
+    const {
+        mutate: deleteSegment,
+        isPending: deleteSegmentExecuting
+    } = useDeleteSegmentMutation({
+        onSuccess: onClear,
+    });
 
     const {
         data: mapSegmentationProperties
@@ -533,6 +542,15 @@ const SegmentActions = (
         });
     }, [canEdit, createSegment, roomRectangles, saveRestrictions, storedRestrictions]);
 
+    const handleDeleteClick = React.useCallback(() => {
+        if (!canEdit || selectedSegmentIds.length !== 1) {
+            return;
+        }
+
+        setDeleteDialogOpen(false);
+        deleteSegment(selectedSegmentIds[0]);
+    }, [canEdit, deleteSegment, selectedSegmentIds]);
+
 
     return (
         <Grid2 container spacing={1} direction="row-reverse" flexWrap="wrap-reverse">
@@ -629,6 +647,33 @@ const SegmentActions = (
                         <RenameIcon style={{marginRight: "0.25rem", marginLeft: "-0.25rem"}}/>
                         Rename
                         {renameSegmentExecuting && (
+                            <CircularProgress
+                                color="inherit"
+                                size={18}
+                                style={{marginLeft: 10}}
+                            />
+                        )}
+                    </ActionButton>
+                </Grid2>
+            }
+            {
+                segmentCreationSupported &&
+                selectedSegmentIds.length === 1 &&
+                cuttingLine === undefined &&
+
+                <Grid2>
+                    <ActionButton
+                        disabled={deleteSegmentExecuting || !canEdit}
+                        color="inherit"
+                        size="medium"
+                        variant="extended"
+                        onClick={() => {
+                            setDeleteDialogOpen(true);
+                        }}
+                    >
+                        <DeleteIcon style={{marginRight: "0.25rem", marginLeft: "-0.25rem"}}/>
+                        Delete
+                        {deleteSegmentExecuting && (
                             <CircularProgress
                                 color="inherit"
                                 size={18}
@@ -757,6 +802,26 @@ const SegmentActions = (
                     rectangles={roomRectangles}
                     onCreateSegment={handleCreateRoom}
                 />
+            }
+            {
+                segmentCreationSupported && selectedSegmentIds.length === 1 &&
+                <Dialog
+                    open={deleteDialogOpen}
+                    onClose={() => setDeleteDialogOpen(false)}
+                    sx={{userSelect: "none"}}
+                >
+                    <DialogTitle>Delete Segment</DialogTitle>
+                    <DialogContent>
+                        <DialogContentText>
+                            Delete the room &quot;{segmentNames[selectedSegmentIds[0]] ?? selectedSegmentIds[0]}&quot;?
+                            This cannot be undone.
+                        </DialogContentText>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+                        <Button color="error" onClick={handleDeleteClick}>Delete</Button>
+                    </DialogActions>
+                </Dialog>
             }
         </Grid2>
     );

@@ -46,6 +46,18 @@ class MapSegmentationCapability extends Capability {
     }
 
     /**
+     * The counterpart of createSegment: removes a segment which only exists because of
+     * Valetudo-side metadata. Implementations which do not override this method will throw
+     * a NotImplementedError and must not advertise segmentCreationSupport in getProperties().
+     *
+     * @param {import("../../entities/core/ValetudoMapSegment")} segment
+     * @returns {Promise<void>}
+     */
+    async deleteSegment(segment) {
+        throw new NotImplementedError();
+    }
+
+    /**
      * @returns {MapSegmentationCapabilityProperties}
      */
     getProperties() {

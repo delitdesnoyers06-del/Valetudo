@@ -353,6 +353,18 @@ export const sendCreateSegmentCommand = async (
         });
 };
 
+export const sendDeleteSegmentCommand = async (
+    segmentId: string
+): Promise<void> => {
+    await valetudoAPI.put(
+        `/robot/capabilities/${Capability.MapSegmentation}`,
+        {
+            action: "delete_segment",
+            segment_id: segmentId
+        }
+    );
+};
+
 export const sendJoinSegmentsCommand = async (
     parameters: MapSegmentEditJoinRequestParameters
 ): Promise<void> => {

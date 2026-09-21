@@ -127,6 +127,21 @@ class RoborockV1MapSegmentationCapability extends MapSegmentationCapability {
     }
 
     /**
+     * Removes a Valetudo-managed room. Ids are never reused, so existing rooms and their colours
+     * keep their identity (handoff doubt #9).
+     *
+     * @param {import("../../../entities/core/ValetudoMapSegment")} segment
+     * @returns {Promise<void>}
+     */
+    async deleteSegment(segment) {
+        if (this.robot.mapStore.removeRoom(String(segment.id)) !== true) {
+            throw new Error("Room not found");
+        }
+
+        this.robot.pollMap();
+    }
+
+    /**
      * @returns {import("../../../core/capabilities/MapSegmentationCapability").MapSegmentationCapabilityProperties}
      */
     getProperties() {

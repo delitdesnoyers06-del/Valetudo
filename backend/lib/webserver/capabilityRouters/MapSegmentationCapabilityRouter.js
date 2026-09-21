@@ -70,6 +70,28 @@ class MapSegmentationCapabilityRouter extends CapabilityRouter {
                     break;
                 }
 
+                /**
+                 * Optional action for robots which advertise segmentCreationSupport.
+                 * Removes a Valetudo-side segment again.
+                 */
+                case "delete_segment": {
+                    if (typeof req.body.segment_id === "string" || typeof req.body.segment_id === "number") {
+                        try {
+                            await this.capability.deleteSegment(new ValetudoMapSegment({
+                                id: String(req.body.segment_id)
+                            }));
+
+                            res.sendStatus(200);
+                        } catch (e) {
+                            this.sendErrorResponse(req, res, e);
+                        }
+                    } else {
+                        res.sendStatus(400);
+                    }
+
+                    break;
+                }
+
                 default: {
                     res.sendStatus(400);
                 }

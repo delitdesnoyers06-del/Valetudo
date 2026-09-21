@@ -306,6 +306,41 @@ describe("RoborockV1 map pipeline", () => {
         });
     });
 
+    describe("room deletion", () => {
+        it("removes the room from the store, the segment list and the map", async () => {
+            const room = store.upsertRoom(ROOM_RECT, "Kitchen");
+
+            const map = buildMap();
+            let pollMapCalls = 0;
+            const robot = {
+                mapStore: store,
+                state: {map: map},
+                pollMap: () => {
+                    pollMapCalls++;
+                }
+            };
+
+            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
+            assert.strictEqual(map.getSegments().length, 1, "the room is drawn on the map");
+
+            const capability = new capabilities.RoborockV1MapSegmentationCapability({robot: robot});
+            await capability.deleteSegment(new ValetudoMapSegment({id: room.id}));
+
+            assert.strictEqual(pollMapCalls, 1, "the map is polled so that the overlay drops the room");
+            assert.deepStrictEqual(await capability.getSegments(), [], "the store no longer lists the room");
+
+            const mapAfterDeletion = buildMap();
+            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, mapAfterDeletion);
+
+            assert.strictEqual(mapAfterDeletion.getSegments().length, 0);
+
+            await assert.rejects(
+                () => capability.deleteSegment(new ValetudoMapSegment({id: room.id})),
+                /Room not found/
+            );
+        });
+    });
+
     describe("capability registration", () => {
         it("exposes the six Gen 1 map capabilities with unique types", () => {
             const robot = {mapStore: store};

@@ -40,7 +40,8 @@
                   "type": "string",
                   "enum": [
                     "start_segment_action",
-                    "create_segment"
+                    "create_segment",
+                    "delete_segment"
                   ]
                 },
                 "segment_ids": {
@@ -88,6 +89,10 @@
                   "type": "string",
                   "maxLength": 23,
                   "description": "Name of the segment created by the 'create_segment' action"
+                },
+                "segment_id": {
+                  "type": "string",
+                  "description": "Id of the segment removed by the 'delete_segment' action"
                 }
               }
             },
