@@ -44,6 +44,22 @@ class RoborockV1MapSegmentationCapability extends MapSegmentationCapability {
     }
 
     /**
+     * Rooms are Valetudo-side metadata, so the authoritative list is the map store rather
+     * than the currently parsed map. This also keeps the room list available while the robot
+     * has not (yet) uploaded a parseable map, which is common right after a reboot.
+     *
+     * @returns {Promise<Array<import("../../../entities/core/ValetudoMapSegment")>>}
+     */
+    async getSegments() {
+        return this.robot.mapStore.listRooms().map(room => {
+            return new ValetudoMapSegment({
+                id: String(room.id),
+                name: room.name
+            });
+        });
+    }
+
+    /**
      * Cleans the Valetudo rooms behind the given segment ids.
      *
      * Unknown ids are ignored; if none of the ids resolve to a stored room nothing is sent.

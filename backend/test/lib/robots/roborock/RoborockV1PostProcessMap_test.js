@@ -228,6 +228,47 @@ describe("RoborockV1 map pipeline", () => {
         });
     });
 
+    describe("capability getters read from the store, not from the current map", () => {
+        it("lists the stored rooms even when the current map has no segment layers", async () => {
+            const room = store.upsertRoom(ROOM_RECT, "Kitchen");
+            const map = buildMap();
+            const robot = {mapStore: store, state: {map: map}};
+
+            assert.strictEqual(map.getSegments().length, 0, "the raw map has no segment layers");
+
+            const segments = await new capabilities.RoborockV1MapSegmentationCapability({robot: robot}).getSegments();
+
+            assert.deepStrictEqual(
+                segments.map(segment => {
+                    return {id: segment.id, name: segment.name};
+                }),
+                [{id: room.id, name: "Kitchen"}]
+            );
+        });
+
+        it("returns saved restrictions without waiting for the next map poll", async () => {
+            store.setRestrictions(new ValetudoVirtualRestrictions({
+                virtualWalls: [
+                    new ValetudoVirtualWall({points: {pA: {x: 100, y: 100}, pB: {x: 200, y: 100}}})
+                ],
+                restrictedZones: []
+            }));
+
+            const map = buildMap();
+            const robot = {mapStore: store, state: {map: map}};
+
+            assert.strictEqual(map.entities.filter(entity => {
+                return entity.type === "virtual_wall";
+            }).length, 0, "the map has not been overlaid yet");
+
+            const restrictions = await new capabilities.RoborockV1CombinedVirtualRestrictionsCapability({robot: robot})
+                .getVirtualRestrictions();
+
+            assert.strictEqual(restrictions.virtualWalls.length, 1);
+            assert.deepStrictEqual(restrictions.virtualWalls[0].points.pA, {x: 100, y: 100});
+        });
+    });
+
     describe("capability registration", () => {
         it("exposes the six Gen 1 map capabilities with unique types", () => {
             const robot = {mapStore: store};
