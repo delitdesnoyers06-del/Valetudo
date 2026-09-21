@@ -3,13 +3,16 @@ import {
     MapSegmentMaterial,
     RawMapLayerMaterial,
     StatusState,
+    useCombinedVirtualRestrictionsMutation,
+    useCombinedVirtualRestrictionsQuery,
     useCreateSegmentMutation,
     useJoinSegmentsMutation,
     useMapSegmentationPropertiesQuery,
     useMapSegmentMaterialControlPropertiesQuery,
     useRenameSegmentMutation,
     useSetSegmentMaterialMutation,
-    useSplitSegmentMutation
+    useSplitSegmentMutation,
+    ValetudoRestrictedZoneType
 } from "../../../api";
 import React from "react";
 import {
@@ -120,34 +123,99 @@ const SegmentRenameDialog = (props: SegmentRenameDialogProps) => {
     );
 };
 
+interface RoomRectangle {
+    label: string;
+    rect: {
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+    };
+    /** Index in the stored restrictedZones array; undefined for a locally drawn (unsaved) area */
+    storedZoneIndex?: number;
+}
+
+/**
+ * Normalises two opposite corners into an axis-aligned rectangle.
+ *
+ * @param {PointCoordinates} a
+ * @param {PointCoordinates} b
+ * @returns {RoomRectangle["rect"]}
+ */
+const rectangleFromCorners = (a: PointCoordinates, b: PointCoordinates): RoomRectangle["rect"] => {
+    return {
+        x1: Math.min(a.x, b.x),
+        y1: Math.min(a.y, b.y),
+        x2: Math.max(a.x, b.x),
+        y2: Math.max(a.y, b.y)
+    };
+};
+
+/**
+ * @param {string} prefix
+ * @param {number} index
+ * @param {RoomRectangle["rect"]} rect
+ * @returns {string}
+ */
+const describeRectangle = (prefix: string, index: number, rect: RoomRectangle["rect"]): string => {
+    const width = ((rect.x2 - rect.x1) / 100).toFixed(1);
+    const height = ((rect.y2 - rect.y1) / 100).toFixed(1);
+
+    return prefix + " " + (index + 1) + " - " + width + " x " + height + " m";
+};
+
 interface SegmentCreationDialogProps {
     open: boolean;
     onClose: () => void;
-    onCreateSegment: (name: string) => void;
+    rectangles: Array<RoomRectangle>;
+    onCreateSegment: (name: string, rectangleIndex: number) => void;
 }
 
 const SEGMENT_NAME_MAX_LENGTH = 23;
 
 const SegmentCreationDialog = (props: SegmentCreationDialogProps) => {
-    const {open, onClose, onCreateSegment} = props;
+    const {open, onClose, rectangles, onCreateSegment} = props;
     const [name, setName] = React.useState("");
+    const [rectangleIndex, setRectangleIndex] = React.useState(0);
 
     React.useEffect(() => {
         if (open) {
             setName("");
+            setRectangleIndex(0);
         }
     }, [open]);
 
     const trimmedName = name.trim();
     const nameIsValid = trimmedName.length > 0 && trimmedName.length <= SEGMENT_NAME_MAX_LENGTH;
+    const selectedRectangle = rectangles[rectangleIndex];
 
     return (
         <Dialog open={open} onClose={onClose} sx={{userSelect: "none"}}>
             <DialogTitle>Create Room</DialogTitle>
             <DialogContent>
                 <DialogContentText>
-                    How should the new room be called?
+                    Rooms are axis-aligned rectangles. Pick a no-go area - one which is already saved
+                    or one you just drew - to turn it into a room.
                 </DialogContentText>
+                <FormControl component="fieldset">
+                    <RadioGroup
+                        value={rectangleIndex}
+                        onChange={(e) => {
+                            setRectangleIndex(Number(e.target.value));
+                        }}
+                    >
+                        {rectangles.map((rectangle, index) => {
+                            return (
+                                <FormControlLabel
+                                    key={rectangle.label}
+                                    value={index}
+                                    control={<Radio/>}
+                                    label={rectangle.label}
+                                />
+                            );
+                        })}
+                    </RadioGroup>
+                </FormControl>
                 <TextField
                     autoFocus
                     margin="dense"
@@ -165,18 +233,24 @@ const SegmentCreationDialog = (props: SegmentCreationDialogProps) => {
                         if (e.key === "Enter") {
                             e.preventDefault();
                             if (nameIsValid) {
-                                onCreateSegment(trimmedName);
+                                onCreateSegment(trimmedName, rectangleIndex);
                             }
                         }
                     }}
                 />
+                {
+                    selectedRectangle?.storedZoneIndex !== undefined &&
+                    <DialogContentText style={{marginTop: "0.5rem"}}>
+                        The saved no-go area is removed as soon as the room exists.
+                    </DialogContentText>
+                }
             </DialogContent>
             <DialogActions>
                 <Button onClick={onClose}>Cancel</Button>
                 <Button
-                    disabled={!nameIsValid}
+                    disabled={!nameIsValid || selectedRectangle === undefined}
                     onClick={() => {
-                        onCreateSegment(trimmedName);
+                        onCreateSegment(trimmedName, rectangleIndex);
                     }}
                 >
                     Create Room
@@ -323,10 +397,59 @@ const SegmentActions = (
     } = useCreateSegmentMutation({
         onSuccess: onClear,
     });
+    const {
+        mutate: saveRestrictions
+    } = useCombinedVirtualRestrictionsMutation();
 
     const {
         data: mapSegmentationProperties
     } = useMapSegmentationPropertiesQuery(supportedCapabilities[Capability.MapSegmentation]);
+
+    const {
+        data: storedRestrictions
+    } = useCombinedVirtualRestrictionsQuery(supportedCapabilities[Capability.MapSegmentation]);
+
+    /**
+     * Everything which could become a room: the no-go areas which are already stored as virtual
+     * restrictions (drawn and saved by the user) and the ones which are drawn but not saved yet.
+     */
+    const roomRectangles = React.useMemo<Array<RoomRectangle>>(() => {
+        const rectangles: Array<RoomRectangle> = [];
+
+        (storedRestrictions?.restrictedZones ?? []).forEach((zone, index) => {
+            if (zone.type !== ValetudoRestrictedZoneType.Regular) {
+                return;
+            }
+
+            const rect = rectangleFromCorners(zone.points.pA, zone.points.pC);
+
+            rectangles.push({
+                label: describeRectangle("Saved no-go area", index, rect),
+                rect: rect,
+                storedZoneIndex: index
+            });
+        });
+
+        noGoAreas.forEach((noGoArea, index) => {
+            const rect = rectangleFromCorners(
+                convertPixelCoordinatesToCMSpace({
+                    x: noGoArea.x0,
+                    y: noGoArea.y0
+                }),
+                convertPixelCoordinatesToCMSpace({
+                    x: noGoArea.x2,
+                    y: noGoArea.y2
+                })
+            );
+
+            rectangles.push({
+                label: describeRectangle("Drawn area", index, rect),
+                rect: rect
+            });
+        });
+
+        return rectangles;
+    }, [storedRestrictions, noGoAreas, convertPixelCoordinatesToCMSpace]);
 
     const canEdit = props.robotStatus.value === "docked";
     const segmentCreationSupported = mapSegmentationProperties?.segmentCreationSupport === true;
@@ -382,32 +505,33 @@ const SegmentActions = (
         });
     }, [canEdit, setSegmentMaterial, selectedSegmentIds]);
 
-    const handleCreateRoom = React.useCallback((name: string) => {
-        if (!canEdit || noGoAreas.length === 0) {
+    const handleCreateRoom = React.useCallback((name: string, rectangleIndex: number) => {
+        const rectangle = roomRectangles[rectangleIndex];
+
+        if (!canEdit || !rectangle) {
             return;
         }
-
-        const zone = noGoAreas[noGoAreas.length - 1];
-        const pA = convertPixelCoordinatesToCMSpace({
-            x: zone.x0,
-            y: zone.y0
-        });
-        const pC = convertPixelCoordinatesToCMSpace({
-            x: zone.x2,
-            y: zone.y2
-        });
 
         setCreateRoomDialogOpen(false);
         createSegment({
             name: name,
-            rect: {
-                x1: Math.min(pA.x, pC.x),
-                y1: Math.min(pA.y, pC.y),
-                x2: Math.max(pA.x, pC.x),
-                y2: Math.max(pA.y, pC.y)
+            rect: rectangle.rect
+        }, {
+            onSuccess: () => {
+                if (rectangle.storedZoneIndex === undefined || !storedRestrictions) {
+                    return;
+                }
+
+                // Convert: the no-go area becomes the room, so it must not stay a restriction
+                saveRestrictions({
+                    virtualWalls: storedRestrictions.virtualWalls,
+                    restrictedZones: storedRestrictions.restrictedZones.filter((zone, index) => {
+                        return index !== rectangle.storedZoneIndex;
+                    })
+                });
             }
         });
-    }, [canEdit, createSegment, convertPixelCoordinatesToCMSpace, noGoAreas]);
+    }, [canEdit, createSegment, roomRectangles, saveRestrictions, storedRestrictions]);
 
 
     return (
@@ -417,7 +541,7 @@ const SegmentActions = (
 
                 <Grid2>
                     <ActionButton
-                        disabled={createSegmentExecuting || !canEdit || noGoAreas.length === 0}
+                        disabled={createSegmentExecuting || !canEdit || roomRectangles.length === 0}
                         color="inherit"
                         size="medium"
                         variant="extended"
@@ -600,7 +724,7 @@ const SegmentActions = (
                 <Grid2>
                     <Typography variant="caption" color="textSecondary" style={{fontSize: "1em"}}>
                         Rooms are axis-aligned rectangles. Draw one with the &quot;No-Go&quot; tool in the
-                        virtual restrictions panel, then press Create Room.
+                        virtual restrictions panel - saving it is optional - then press Create Room.
                     </Typography>
                 </Grid2>
             }
@@ -630,6 +754,7 @@ const SegmentActions = (
                 <SegmentCreationDialog
                     open={createRoomDialogOpen}
                     onClose={() => setCreateRoomDialogOpen(false)}
+                    rectangles={roomRectangles}
                     onCreateSegment={handleCreateRoom}
                 />
             }

@@ -987,6 +987,16 @@ export const fetchCombinedVirtualRestrictionsProperties = async (): Promise<Comb
         });
 };
 
+export const fetchCombinedVirtualRestrictions = async (): Promise<CombinedVirtualRestrictionsUpdateRequestParameters> => {
+    return valetudoAPI
+        .get<CombinedVirtualRestrictionsUpdateRequestParameters>(
+            `/robot/capabilities/${Capability.CombinedVirtualRestrictions}`
+        )
+        .then(({data}) => {
+            return data;
+        });
+};
+
 export const sendCombinedVirtualRestrictionsUpdate = async (
     parameters: CombinedVirtualRestrictionsUpdateRequestParameters
 ): Promise<void> => {

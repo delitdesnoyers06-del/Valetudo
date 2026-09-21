@@ -14,6 +14,7 @@ import {
     deleteTimer,
     fetchCapabilities,
     fetchCarpetModeState,
+    fetchCombinedVirtualRestrictions,
     fetchCombinedVirtualRestrictionsProperties,
     fetchConsumableStateInformation,
     fetchCurrentStatistics,
@@ -246,6 +247,7 @@ enum QueryKey {
     ManualControl = "manual_control",
     ManualControlProperties = "manual_control_properties",
     HighResolutionManualControl = "high_resolution_manual_control",
+    CombinedVirtualRestrictions = "combined_virtual_restrictions",
     CombinedVirtualRestrictionsProperties = "combined_virtual_restrictions_properties",
     UpdaterConfiguration = "updater_configuration",
     UpdaterState = "updater_state",
@@ -1355,6 +1357,15 @@ export const useCombinedVirtualRestrictionsPropertiesQuery = () => {
         queryFn: fetchCombinedVirtualRestrictionsProperties,
 
         staleTime: Infinity
+    });
+};
+
+export const useCombinedVirtualRestrictionsQuery = (enabled?: boolean) => {
+    return useQuery({
+        queryKey: [QueryKey.CombinedVirtualRestrictions],
+        queryFn: fetchCombinedVirtualRestrictions,
+
+        enabled: enabled ?? true
     });
 };
 
