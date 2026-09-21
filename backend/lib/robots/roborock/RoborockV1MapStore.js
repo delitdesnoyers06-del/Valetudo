@@ -879,8 +879,16 @@ RoborockV1MapStore.VERSION = 1;
 
 RoborockV1MapStore.MAX_SNAPSHOTS = 3;
 
-/** A charger anchor that moved by more than this (cm) is treated as a different floor */
-RoborockV1MapStore.FLOOR_KEY_DRIFT_TOLERANCE_CM = 20;
+/**
+ * A charger anchor that moved by more than this (cm) is treated as a different floor.
+ *
+ * Sized for the two real sources of anchor movement that are NOT a floor change:
+ *  - the Gen 1 SLAM reports the charger position with a pixel (5 cm) of jitter, and
+ *  - a home with two chargers a few tens of centimetres apart (reported by the user: 20 cm),
+ *    where the robot may dock on either one.
+ * A real "different floor" move shifts the anchor by metres, so this still trips.
+ */
+RoborockV1MapStore.FLOOR_KEY_DRIFT_TOLERANCE_CM = 50;
 
 module.exports = RoborockV1MapStore;
 
