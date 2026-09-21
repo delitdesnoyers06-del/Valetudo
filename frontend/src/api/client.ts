@@ -29,6 +29,7 @@ import {
     MapAnnotationsProperties,
     MapSegmentationActionRequestParameters,
     MapSegmentationProperties,
+    MapSegmentCreationRequestParameters,
     MapSegmentEditJoinRequestParameters,
     MapSegmentEditSplitRequestParameters,
     MapSegmentMaterialControlProperties,
@@ -333,6 +334,23 @@ export const sendCleanSegmentsCommand = async (
             customOrder: parameters.customOrder ?? false
         }
     );
+};
+
+export const sendCreateSegmentCommand = async (
+    parameters: MapSegmentCreationRequestParameters
+): Promise<Segment> => {
+    return valetudoAPI
+        .put<Segment>(
+            `/robot/capabilities/${Capability.MapSegmentation}`,
+            {
+                action: "create_segment",
+                name: parameters.name,
+                rect: parameters.rect
+            }
+        )
+        .then(({data}) => {
+            return data;
+        });
 };
 
 export const sendJoinSegmentsCommand = async (

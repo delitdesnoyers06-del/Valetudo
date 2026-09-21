@@ -57,6 +57,7 @@ import {
     sendCleanZonesCommand,
     sendCombinedVirtualRestrictionsUpdate,
     sendConsumableReset,
+    sendCreateSegmentCommand,
     sendDoNotDisturbConfiguration,
     sendGoToCommand,
     sendHTTPBasicAuthConfiguration,
@@ -175,6 +176,7 @@ import {
     HTTPBasicAuthConfiguration,
     ManualControlInteraction,
     MapSegmentationActionRequestParameters,
+    MapSegmentCreationRequestParameters,
     MapSegmentEditJoinRequestParameters,
     MapSegmentEditSplitRequestParameters,
     MapSegmentMaterialControlRequestParameters,
@@ -186,6 +188,7 @@ import {
     NTPClientConfiguration,
     NTPClientStatus,
     Point,
+    Segment,
     SetLogLevelRequest,
     Timer,
     UpdaterConfiguration,
@@ -628,6 +631,25 @@ export const useRenameSegmentMutation = (
             queryClient.setQueryData<RobotAttribute[]>([QueryKey.Attributes], data, {
                 updatedAt: Date.now(),
             });
+            await options?.onSuccess?.(data, ...args);
+        },
+    });
+};
+
+export const useCreateSegmentMutation = (
+    options?: UseMutationOptions<Segment, unknown, MapSegmentCreationRequestParameters>
+) => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (parameters: MapSegmentCreationRequestParameters) => {
+            return sendCreateSegmentCommand(parameters);
+        },
+        ...options,
+
+        onError: useOnCommandError(Capability.MapSegmentation),
+        onSuccess: async (data, ...args) => {
+            await queryClient.invalidateQueries({ queryKey: [QueryKey.Segments] });
             await options?.onSuccess?.(data, ...args);
         },
     });

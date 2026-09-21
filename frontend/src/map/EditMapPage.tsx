@@ -39,6 +39,7 @@ const EditMapPage = (props: {
     const [
         combinedVirtualRestrictionsCapabilitySupported,
 
+        mapSegmentationCapabilitySupported,
         mapSegmentEditCapabilitySupported,
         mapSegmentRenameCapabilitySupported,
         mapSegmentMaterialControlCapabilitySupported,
@@ -47,6 +48,7 @@ const EditMapPage = (props: {
     ] = useCapabilitiesSupported(
         Capability.CombinedVirtualRestrictions,
 
+        Capability.MapSegmentation,
         Capability.MapSegmentEdit,
         Capability.MapSegmentRename,
         Capability.MapSegmentMaterialControl,
@@ -116,6 +118,7 @@ const EditMapPage = (props: {
         supportedCapabilities={{
             [Capability.CombinedVirtualRestrictions]: combinedVirtualRestrictionsCapabilitySupported,
 
+            [Capability.MapSegmentation]: mapSegmentationCapabilitySupported,
             [Capability.MapSegmentEdit]: mapSegmentEditCapabilitySupported,
             [Capability.MapSegmentRename]: mapSegmentRenameCapabilitySupported,
             [Capability.MapSegmentMaterialControl]: mapSegmentMaterialControlCapabilitySupported,

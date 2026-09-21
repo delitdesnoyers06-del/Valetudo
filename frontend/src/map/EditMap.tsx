@@ -24,6 +24,7 @@ interface EditMapProps extends MapProps {
     supportedCapabilities: {
         [Capability.CombinedVirtualRestrictions]: boolean,
 
+        [Capability.MapSegmentation]: boolean,
         [Capability.MapSegmentEdit]: boolean,
         [Capability.MapSegmentRename]: boolean
         [Capability.MapSegmentMaterialControl]: boolean
@@ -442,10 +443,12 @@ class EditMap extends BaseMap<EditMapProps, EditMapState> {
                             segmentNames={this.state.segmentNames}
                             segmentMaterials={this.state.segmentMaterials}
                             cuttingLine={this.state.cuttingLine}
+                            noGoAreas={this.state.noGoAreas}
                             convertPixelCoordinatesToCMSpace={(coordinates => {
                                 return this.structureManager.convertPixelCoordinatesToCMSpace(coordinates);
                             })}
                             supportedCapabilities={{
+                                [Capability.MapSegmentation]: this.props.supportedCapabilities[Capability.MapSegmentation],
                                 [Capability.MapSegmentEdit]: this.props.supportedCapabilities[Capability.MapSegmentEdit],
                                 [Capability.MapSegmentRename]: this.props.supportedCapabilities[Capability.MapSegmentRename],
                                 [Capability.MapSegmentMaterialControl]: this.props.supportedCapabilities[Capability.MapSegmentMaterialControl]

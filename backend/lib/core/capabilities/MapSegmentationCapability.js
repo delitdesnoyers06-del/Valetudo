@@ -28,6 +28,24 @@ class MapSegmentationCapability extends Capability {
     }
 
     /**
+     * Robots which derive their segments from Valetudo-side metadata instead of from the
+     * firmware map can optionally support creating new segments ("rooms") at runtime.
+     * Implementations which do not override this method will throw a NotImplementedError
+     * and must not advertise segmentCreationSupport in getProperties().
+     *
+     * @param {object} rect An axis-aligned rectangle in cm in the robot's map coordinate space
+     * @param {number} rect.x1
+     * @param {number} rect.y1
+     * @param {number} rect.x2
+     * @param {number} rect.y2
+     * @param {string} [name]
+     * @returns {Promise<import("../../entities/core/ValetudoMapSegment")>} The newly created segment
+     */
+    async createSegment(rect, name) {
+        throw new NotImplementedError();
+    }
+
+    /**
      * @returns {MapSegmentationCapabilityProperties}
      */
     getProperties() {
@@ -36,7 +54,8 @@ class MapSegmentationCapability extends Capability {
                 min: 1,
                 max: 1
             },
-            customOrderSupport: false
+            customOrderSupport: false,
+            segmentCreationSupport: false
         };
     }
 
@@ -57,4 +76,6 @@ module.exports = MapSegmentationCapability;
  * @property {number} iterationCount.max
  * 
  * @property {boolean} customOrderSupport
+ *
+ * @property {boolean} [segmentCreationSupport] Whether or not this robot supports Valetudo-side creation of new segments/rooms
  */

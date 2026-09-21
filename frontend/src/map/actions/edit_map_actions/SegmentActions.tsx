@@ -3,7 +3,9 @@ import {
     MapSegmentMaterial,
     RawMapLayerMaterial,
     StatusState,
+    useCreateSegmentMutation,
     useJoinSegmentsMutation,
+    useMapSegmentationPropertiesQuery,
     useMapSegmentMaterialControlPropertiesQuery,
     useRenameSegmentMutation,
     useSetSegmentMaterialMutation,
@@ -28,8 +30,10 @@ import {
 } from "@mui/material";
 import {ActionButton} from "../../Styled";
 import CuttingLineClientStructure from "../../structures/client_structures/CuttingLineClientStructure";
+import NoGoAreaClientStructure from "../../structures/client_structures/NoGoAreaClientStructure";
 import {PointCoordinates} from "../../utils/types";
 import {
+    Add as AddIcon,
     Clear as ClearIcon,
     ContentCut as SplitIcon,
     Dashboard as MaterialIcon,
@@ -116,6 +120,72 @@ const SegmentRenameDialog = (props: SegmentRenameDialogProps) => {
     );
 };
 
+interface SegmentCreationDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onCreateSegment: (name: string) => void;
+}
+
+const SEGMENT_NAME_MAX_LENGTH = 23;
+
+const SegmentCreationDialog = (props: SegmentCreationDialogProps) => {
+    const {open, onClose, onCreateSegment} = props;
+    const [name, setName] = React.useState("");
+
+    React.useEffect(() => {
+        if (open) {
+            setName("");
+        }
+    }, [open]);
+
+    const trimmedName = name.trim();
+    const nameIsValid = trimmedName.length > 0 && trimmedName.length <= SEGMENT_NAME_MAX_LENGTH;
+
+    return (
+        <Dialog open={open} onClose={onClose} sx={{userSelect: "none"}}>
+            <DialogTitle>Create Room</DialogTitle>
+            <DialogContent>
+                <DialogContentText>
+                    How should the new room be called?
+                </DialogContentText>
+                <TextField
+                    autoFocus
+                    margin="dense"
+                    variant="standard"
+                    label="Room name"
+                    fullWidth
+                    value={name}
+                    inputProps={{
+                        maxLength: SEGMENT_NAME_MAX_LENGTH
+                    }}
+                    onChange={(e) => {
+                        setName(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (nameIsValid) {
+                                onCreateSegment(trimmedName);
+                            }
+                        }
+                    }}
+                />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Cancel</Button>
+                <Button
+                    disabled={!nameIsValid}
+                    onClick={() => {
+                        onCreateSegment(trimmedName);
+                    }}
+                >
+                    Create Room
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
 interface SegmentMaterialDialogProps {
     open: boolean;
     onClose: () => void;
@@ -188,10 +258,12 @@ interface SegmentActionsProperties {
     segmentNames: Record<string, string>;
     segmentMaterials: Record<string, RawMapLayerMaterial>;
     cuttingLine: CuttingLineClientStructure | undefined,
+    noGoAreas: Array<NoGoAreaClientStructure>,
 
     convertPixelCoordinatesToCMSpace(coordinates: PointCoordinates): PointCoordinates
 
     supportedCapabilities: {
+        [Capability.MapSegmentation]: boolean,
         [Capability.MapSegmentEdit]: boolean,
         [Capability.MapSegmentRename]: boolean,
         [Capability.MapSegmentMaterialControl]: boolean,
@@ -210,6 +282,7 @@ const SegmentActions = (
         segmentNames,
         segmentMaterials,
         cuttingLine,
+        noGoAreas,
         convertPixelCoordinatesToCMSpace,
         supportedCapabilities,
         onAddCuttingLine,
@@ -218,6 +291,7 @@ const SegmentActions = (
 
     const [renameDialogOpen, setRenameDialogOpen] = React.useState(false);
     const [materialDialogOpen, setMaterialDialogOpen] = React.useState(false);
+    const [createRoomDialogOpen, setCreateRoomDialogOpen] = React.useState(false);
 
     const {
         mutate: joinSegments,
@@ -243,8 +317,19 @@ const SegmentActions = (
     } = useSetSegmentMaterialMutation({
         onSuccess: onClear,
     });
+    const {
+        mutate: createSegment,
+        isPending: createSegmentExecuting
+    } = useCreateSegmentMutation({
+        onSuccess: onClear,
+    });
+
+    const {
+        data: mapSegmentationProperties
+    } = useMapSegmentationPropertiesQuery(supportedCapabilities[Capability.MapSegmentation]);
 
     const canEdit = props.robotStatus.value === "docked";
+    const segmentCreationSupported = mapSegmentationProperties?.segmentCreationSupport === true;
 
     const handleSplitClick = React.useCallback(() => {
         if (!canEdit || !cuttingLine || selectedSegmentIds.length !== 1) {
@@ -297,9 +382,61 @@ const SegmentActions = (
         });
     }, [canEdit, setSegmentMaterial, selectedSegmentIds]);
 
+    const handleCreateRoom = React.useCallback((name: string) => {
+        if (!canEdit || noGoAreas.length === 0) {
+            return;
+        }
+
+        const zone = noGoAreas[noGoAreas.length - 1];
+        const pA = convertPixelCoordinatesToCMSpace({
+            x: zone.x0,
+            y: zone.y0
+        });
+        const pC = convertPixelCoordinatesToCMSpace({
+            x: zone.x2,
+            y: zone.y2
+        });
+
+        setCreateRoomDialogOpen(false);
+        createSegment({
+            name: name,
+            rect: {
+                x1: Math.min(pA.x, pC.x),
+                y1: Math.min(pA.y, pC.y),
+                x2: Math.max(pA.x, pC.x),
+                y2: Math.max(pA.y, pC.y)
+            }
+        });
+    }, [canEdit, createSegment, convertPixelCoordinatesToCMSpace, noGoAreas]);
+
 
     return (
         <Grid2 container spacing={1} direction="row-reverse" flexWrap="wrap-reverse">
+            {
+                segmentCreationSupported &&
+
+                <Grid2>
+                    <ActionButton
+                        disabled={createSegmentExecuting || !canEdit || noGoAreas.length === 0}
+                        color="inherit"
+                        size="medium"
+                        variant="extended"
+                        onClick={() => {
+                            setCreateRoomDialogOpen(true);
+                        }}
+                    >
+                        <AddIcon style={{marginRight: "0.25rem", marginLeft: "-0.25rem"}}/>
+                        Create Room
+                        {createSegmentExecuting && (
+                            <CircularProgress
+                                color="inherit"
+                                size={18}
+                                style={{marginLeft: 10}}
+                            />
+                        )}
+                    </ActionButton>
+                </Grid2>
+            }
             {
                 supportedCapabilities[Capability.MapSegmentEdit] &&
                 (selectedSegmentIds.length === 1 || selectedSegmentIds.length === 2) &&
@@ -457,6 +594,16 @@ const SegmentActions = (
                     </Typography>
                 </Grid2>
             }
+            {
+                segmentCreationSupported &&
+
+                <Grid2>
+                    <Typography variant="caption" color="textSecondary" style={{fontSize: "1em"}}>
+                        Rooms are axis-aligned rectangles. Draw one with the &quot;No-Go&quot; tool in the
+                        virtual restrictions panel, then press Create Room.
+                    </Typography>
+                </Grid2>
+            }
 
             {
                 supportedCapabilities[Capability.MapSegmentRename] && selectedSegmentIds.length === 1 &&
@@ -476,6 +623,14 @@ const SegmentActions = (
                     name={segmentNames[selectedSegmentIds[0]] ?? selectedSegmentIds[0]}
                     currentMaterial={segmentMaterials[selectedSegmentIds[0]] as unknown as MapSegmentMaterial ?? MapSegmentMaterial.Generic}
                     onSubmit={handleSetMaterial}
+                />
+            }
+            {
+                segmentCreationSupported &&
+                <SegmentCreationDialog
+                    open={createRoomDialogOpen}
+                    onClose={() => setCreateRoomDialogOpen(false)}
+                    onCreateSegment={handleCreateRoom}
                 />
             }
         </Grid2>

@@ -511,10 +511,23 @@ class RoborockValetudoRobot extends MiioValetudoRobot {
                 });
             }
 
+            this.state.map = this.postProcessMap(this.state.map) ?? this.state.map;
+
             this.emitMapUpdated();
         }
 
         return parsedMap;
+    }
+
+    /**
+     * Post-process a freshly parsed ValetudoMap before it is emitted; subclasses may mutate it in place
+     *
+     * @protected
+     * @param {import("../../entities/map/ValetudoMap")} map
+     * @returns {import("../../entities/map/ValetudoMap")}
+     */
+    postProcessMap(map) {
+        return map;
     }
 
     startup() {

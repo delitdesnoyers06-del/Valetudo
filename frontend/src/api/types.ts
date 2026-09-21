@@ -90,6 +90,7 @@ export interface MapSegmentationProperties {
         max: number;
     };
     customOrderSupport: boolean;
+    segmentCreationSupport?: boolean;
 }
 
 export interface Segment {
@@ -178,6 +179,16 @@ export interface MapSegmentationActionRequestParameters {
     segment_ids: string[];
     iterations?: number;
     customOrder?: boolean;
+}
+
+export interface MapSegmentCreationRequestParameters {
+    name?: string;
+    rect: {
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+    };
 }
 
 export interface MapSegmentEditJoinRequestParameters {

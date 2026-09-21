@@ -25,20 +25,22 @@
       "tags": [
         "MapSegmentationCapability"
       ],
-      "summary": "Clean map segments",
+      "summary": "Clean or create map segments",
+      "description": "The action 'start_segment_action' cleans the given segment_ids. The optional action 'create_segment' creates a new segment from an axis-aligned rectangle and is only available on robots which advertise segmentCreationSupport in MapSegmentationCapability/properties (e.g. robots whose firmware has no native segment support and where segments are Valetudo-side metadata).",
       "requestBody": {
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
               "required": [
-                "segment_ids"
+                "action"
               ],
               "properties": {
                 "action": {
                   "type": "string",
                   "enum": [
-                    "start_segment_action"
+                    "start_segment_action",
+                    "create_segment"
                   ]
                 },
                 "segment_ids": {
@@ -57,6 +59,35 @@
                 "customOrder": {
                   "type": "boolean",
                   "description": "Whether or not Segments should be cleaned in order of ID appearance in the Array. Defaults to false. (Needs firmware support)"
+                },
+                "rect": {
+                  "type": "object",
+                  "description": "Axis-aligned rectangle in cm in the robot's map coordinate system, used by the 'create_segment' action",
+                  "required": [
+                    "x1",
+                    "y1",
+                    "x2",
+                    "y2"
+                  ],
+                  "properties": {
+                    "x1": {
+                      "type": "number"
+                    },
+                    "y1": {
+                      "type": "number"
+                    },
+                    "x2": {
+                      "type": "number"
+                    },
+                    "y2": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 23,
+                  "description": "Name of the segment created by the 'create_segment' action"
                 }
               }
             },
@@ -74,7 +105,7 @@
                 }
               },
               "Clean segments in custom order": {
-                "description": "Clean selected segments in order of appearance of the IDs provided in the segment_ids array. Check custom order support for your robot with the MapSegmentationCapability/properties endpoint",
+                "description": "Clean segments in order of appearance of the IDs provided in the segment_ids array. Check custom order support for your robot with the MapSegmentationCapability/properties endpoint",
                 "value": {
                   "action": "start_segment_action",
                   "segment_ids": [
@@ -97,6 +128,19 @@
                   ],
                   "iterations": 3,
                   "customOrder": true
+                }
+              },
+              "Create a segment from a rectangle": {
+                "description": "Only available if MapSegmentationCapability/properties reports segmentCreationSupport",
+                "value": {
+                  "action": "create_segment",
+                  "name": "Kitchen",
+                  "rect": {
+                    "x1": 2500,
+                    "y1": 2500,
+                    "x2": 3500,
+                    "y2": 3000
+                  }
                 }
               }
             }
@@ -148,6 +192,10 @@
                   },
                   "customOrderSupported": {
                     "type": "boolean"
+                  },
+                  "segmentCreationSupport": {
+                    "type": "boolean",
+                    "description": "Whether or not this robot supports creating new segments/rooms through the create_segment action"
                   }
                 }
               }
