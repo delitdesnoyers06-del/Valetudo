@@ -46,6 +46,8 @@ class RoborockV1MapStore {
          * @type {RoborockV1MapStoreData}
          */
         this.data = RoborockV1MapStore.DEFAULT_DATA();
+        /** @private */
+        this.lastMapPersistedAt = undefined;
     }
 
     /**
@@ -417,8 +419,88 @@ class RoborockV1MapStore {
     }
 
     /**
-     * Clears rooms, restrictions, the floor key and all snapshots. nextRoomId is intentionally not
-     * reset so that ids stay monotonic and are never reused.
+     * Remembers the map which was parsed last so that Valetudo can show it again after a restart.
+     *
+     * The Gen 1 firmware only uploads a map when it changed, so while the robot sits on its dock
+     * Valetudo would otherwise fall back to its bundled placeholder map after a restart, hiding
+     * the stored rooms until the next cleaning run.
+     *
+     * The in-memory copy is always updated, while the file (tens of kB) is written at most once
+     * per RoborockV1MapStore.LAST_MAP_PERSIST_INTERVAL_MS: map polls happen every few seconds
+     * while cleaning and rewriting the store that often would only wear the flash. Every other
+     * store write persists the newest remembered map as well.
+     *
+     * @public
+     * @param {string|object} mapJson Stringified ValetudoMap JSON. Objects are stringified for convenience
+     * @returns {boolean} true if the remembered map was written to disk
+     */
+    rememberMap(mapJson) {
+        this.load();
+
+        let serialized;
+
+        try {
+            serialized = typeof mapJson === "string" ? mapJson : JSON.stringify(mapJson);
+        } catch (e) {
+            this._warn("Could not serialize the map to remember (" + e.message + ")");
+
+            return false;
+        }
+
+        if (typeof serialized !== "string" || serialized.length === 0) {
+            return false;
+        }
+
+        const now = Date.now();
+
+        this.data.lastMap = {
+            created: Math.floor(now / 1000),
+            map: serialized
+        };
+
+        if (
+            this.lastMapPersistedAt !== undefined &&
+            now - this.lastMapPersistedAt < RoborockV1MapStore.LAST_MAP_PERSIST_INTERVAL_MS
+        ) {
+            return false;
+        }
+
+        this.persist();
+        this.lastMapPersistedAt = now;
+
+        return true;
+    }
+
+    /**
+     * @public
+     * @returns {RoborockV1MapStoreLastMap|undefined}
+     */
+    getLastMap() {
+        this.load();
+
+        return this.data.lastMap ? {...this.data.lastMap} : undefined;
+    }
+
+    /**
+     * @public
+     * @returns {void}
+     */
+    forgetLastMap() {
+        this.load();
+
+        if (this.data.lastMap === undefined) {
+            return;
+        }
+
+        this.data.lastMap = undefined;
+        this.lastMapPersistedAt = undefined;
+
+        this.persist();
+    }
+
+    /**
+     * Clears rooms, restrictions, the floor key, the remembered map and all snapshots. nextRoomId
+     * is intentionally not reset so that ids stay monotonic and are never reused.
      *
      * @public
      * @returns {void}
@@ -433,6 +515,8 @@ class RoborockV1MapStore {
         };
         this.data.floorKey = undefined;
         this.data.snapshots = [];
+        this.data.lastMap = undefined;
+        this.lastMapPersistedAt = undefined;
 
         this.persist();
     }
@@ -628,7 +712,8 @@ class RoborockV1MapStore {
                 virtualWalls: [],
                 restrictedZones: []
             },
-            snapshots: []
+            snapshots: [],
+            lastMap: undefined
         };
     }
 
@@ -656,6 +741,7 @@ class RoborockV1MapStore {
         data.nextRoomId = Number.isInteger(raw.nextRoomId) && raw.nextRoomId > highestRoomId ? raw.nextRoomId : highestRoomId + 1;
         data.restrictions = RoborockV1MapStore.NORMALIZE_RESTRICTIONS(raw.restrictions);
         data.snapshots = RoborockV1MapStore.NORMALIZE_SNAPSHOTS(raw.snapshots);
+        data.lastMap = RoborockV1MapStore.NORMALIZE_LAST_MAP(raw.lastMap);
 
         return data;
     }
@@ -824,6 +910,27 @@ class RoborockV1MapStore {
 
     /**
      * @private
+     * @param {any} rawLastMap
+     * @returns {RoborockV1MapStoreLastMap|undefined}
+     */
+    static NORMALIZE_LAST_MAP(rawLastMap) {
+        if (
+            !rawLastMap ||
+            typeof rawLastMap !== "object" ||
+            typeof rawLastMap.map !== "string" ||
+            rawLastMap.map.length === 0
+        ) {
+            return undefined;
+        }
+
+        return {
+            created: Number.isInteger(rawLastMap.created) ? rawLastMap.created : Math.floor(Date.now() / 1000),
+            map: rawLastMap.map
+        };
+    }
+
+    /**
+     * @private
      * @param {any} entity
      * @returns {boolean}
      */
@@ -878,6 +985,12 @@ class RoborockV1MapStore {
 RoborockV1MapStore.VERSION = 1;
 
 RoborockV1MapStore.MAX_SNAPSHOTS = 3;
+
+/**
+ * The remembered map is only written to disk once per this interval (ms) so that the frequent map
+ * polls on a cleaning Gen 1 cannot wear the flash. The in-memory copy is always up to date.
+ */
+RoborockV1MapStore.LAST_MAP_PERSIST_INTERVAL_MS = 60 * 1000;
 
 /**
  * A charger anchor that moved by more than this (cm) is treated as a different floor.
@@ -968,4 +1081,11 @@ module.exports = RoborockV1MapStore;
  * @property {Object<string, RoborockV1MapStoreRoom>} rooms
  * @property {RoborockV1MapStoreRestrictions} restrictions
  * @property {Array<RoborockV1MapStoreSnapshot>} snapshots
+ * @property {RoborockV1MapStoreLastMap} [lastMap]
+ */
+
+/**
+ * @typedef {object} RoborockV1MapStoreLastMap
+ * @property {number} created unix seconds
+ * @property {string} map stringified ValetudoMap JSON
  */

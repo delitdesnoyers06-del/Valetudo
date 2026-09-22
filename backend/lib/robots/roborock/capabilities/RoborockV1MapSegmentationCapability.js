@@ -118,7 +118,7 @@ class RoborockV1MapSegmentationCapability extends MapSegmentationCapability {
 
         const room = this.robot.mapStore.upsertRoom(rect, name);
 
-        this.robot.pollMap();
+        this.robot.refreshMapStoreOverlay();
 
         return new ValetudoMapSegment({
             id: String(room.id),
@@ -138,7 +138,7 @@ class RoborockV1MapSegmentationCapability extends MapSegmentationCapability {
             throw new Error("Room not found");
         }
 
-        this.robot.pollMap();
+        this.robot.refreshMapStoreOverlay();
     }
 
     /**

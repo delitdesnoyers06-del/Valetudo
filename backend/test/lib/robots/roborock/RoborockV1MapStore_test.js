@@ -578,6 +578,70 @@ describe("RoborockV1MapStore", () => {
         });
     });
 
+    describe("remembered map", () => {
+        it("round trips the map through the store file", () => {
+            const store = new RoborockV1MapStore({filePath: filePath});
+            const mapJson = JSON.stringify({layers: [{type: "floor"}]});
+
+            assert.strictEqual(store.rememberMap(mapJson), true, "the first call writes the store");
+
+            const remembered = store.getLastMap();
+
+            assert.strictEqual(remembered.map, mapJson);
+            assert.ok(Number.isInteger(remembered.created));
+
+            const reloaded = new RoborockV1MapStore({filePath: filePath});
+
+            assert.deepStrictEqual(reloaded.getLastMap(), remembered, "it survives a restart");
+        });
+
+        it("keeps the newest map in memory and flushes it with the next store write", () => {
+            const store = new RoborockV1MapStore({filePath: filePath});
+
+            assert.strictEqual(store.rememberMap("first"), true);
+            assert.strictEqual(store.rememberMap("second"), false, "the file is written at most once per interval");
+
+            assert.strictEqual(store.getLastMap().map, "second", "the in-memory copy is always current");
+
+            store.upsertRoom(KITCHEN_RECT, "Kitchen");
+
+            const reloaded = new RoborockV1MapStore({filePath: filePath});
+
+            assert.strictEqual(reloaded.getLastMap().map, "second", "the next store write flushed the newest copy");
+        });
+
+        it("rejects empty payloads and drops a malformed remembered map", () => {
+            const store = new RoborockV1MapStore({filePath: filePath});
+
+            assert.strictEqual(store.rememberMap(undefined), false);
+            assert.strictEqual(store.rememberMap(""), false);
+            assert.strictEqual(store.getLastMap(), undefined);
+
+            fs.writeFileSync(filePath, JSON.stringify({
+                version: 1,
+                lastMap: {created: "nope", map: 42}
+            }));
+
+            const reloaded = new RoborockV1MapStore({filePath: filePath});
+
+            assert.strictEqual(reloaded.getLastMap(), undefined);
+        });
+
+        it("forgets the remembered map on request and on a map reset", () => {
+            const store = new RoborockV1MapStore({filePath: filePath});
+
+            store.rememberMap("map");
+            assert.ok(store.getLastMap());
+
+            store.forgetLastMap();
+            assert.strictEqual(store.getLastMap(), undefined);
+
+            store.rememberMap("map again");
+            store.clearRoomsAndRestrictions();
+            assert.strictEqual(store.getLastMap(), undefined);
+        });
+    });
+
     describe("floorKeyForMap", () => {
         it("derives a stable floor key from the charger position", () => {
             assert.strictEqual(RoborockV1MapStore.floorKeyForMap(buildMap()), "charger:2560,2560");

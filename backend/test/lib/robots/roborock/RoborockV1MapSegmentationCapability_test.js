@@ -18,7 +18,7 @@ function createFakeRobot(options = {}) {
 
     const fakeRobot = {
         sentCommands: [],
-        pollMapCalls: 0,
+        refreshMapStoreOverlayCalls: 0,
         upsertedRooms: [],
         renamedRooms: [],
         mapStore: {
@@ -41,8 +41,8 @@ function createFakeRobot(options = {}) {
 
             return Promise.resolve();
         },
-        pollMap: () => {
-            fakeRobot.pollMapCalls++;
+        refreshMapStoreOverlay: () => {
+            fakeRobot.refreshMapStoreOverlayCalls++;
         }
     };
 
@@ -234,10 +234,10 @@ describe("RoborockV1MapSegmentationCapability", () => {
             );
 
             assert.deepStrictEqual(robot.upsertedRooms, []);
-            assert.strictEqual(robot.pollMapCalls, 0);
+            assert.strictEqual(robot.refreshMapStoreOverlayCalls, 0);
         });
 
-        it("creates a room with a valid name and triggers a map poll", async () => {
+        it("creates a room with a valid name and refreshes the map overlay", async () => {
             const robot = createFakeRobot();
             const capability = createSegmentationCapability(robot);
 
@@ -247,7 +247,7 @@ describe("RoborockV1MapSegmentationCapability", () => {
                 rect: {x1: 100, y1: 100, x2: 150, y2: 200},
                 name: "Kitchen"
             }]);
-            assert.strictEqual(robot.pollMapCalls, 1);
+            assert.strictEqual(robot.refreshMapStoreOverlayCalls, 1);
             assert.strictEqual(room.name, "Kitchen");
         });
 
@@ -258,17 +258,17 @@ describe("RoborockV1MapSegmentationCapability", () => {
             await assert.rejects(() => capability.renameSegment({id: "1"}, "x".repeat(24)), /Invalid name/);
 
             assert.deepStrictEqual(robot.renamedRooms, []);
-            assert.strictEqual(robot.pollMapCalls, 0);
+            assert.strictEqual(robot.refreshMapStoreOverlayCalls, 0);
         });
 
-        it("renames a room through the store and triggers a map poll", async () => {
+        it("renames a room through the store and refreshes the map overlay", async () => {
             const robot = createFakeRobot({rooms: [ROOM_ONE]});
             const capability = new RoborockV1MapSegmentRenameCapability({robot: robot});
 
             await capability.renameSegment({id: "1"}, "Kitchen");
 
             assert.deepStrictEqual(robot.renamedRooms, [{id: "1", name: "Kitchen"}]);
-            assert.strictEqual(robot.pollMapCalls, 1);
+            assert.strictEqual(robot.refreshMapStoreOverlayCalls, 1);
         });
 
         it("does not send get_room_mapping when fetching segment names", async () => {

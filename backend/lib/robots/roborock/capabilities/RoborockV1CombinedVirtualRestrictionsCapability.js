@@ -47,7 +47,7 @@ class RoborockV1CombinedVirtualRestrictionsCapability extends CombinedVirtualRes
     async setVirtualRestrictions(virtualRestrictions) {
         this.robot.mapStore.setRestrictions(virtualRestrictions);
 
-        this.robot.pollMap();
+        this.robot.refreshMapStoreOverlay();
     }
 }
 

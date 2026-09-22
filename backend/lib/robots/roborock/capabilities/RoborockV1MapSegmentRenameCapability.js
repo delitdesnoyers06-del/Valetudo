@@ -19,7 +19,7 @@ class RoborockV1MapSegmentRenameCapability extends MapSegmentRenameCapability {
 
         this.robot.mapStore.renameRoom(String(segment.id), name);
 
-        this.robot.pollMap();
+        this.robot.refreshMapStoreOverlay();
     }
 
     /**

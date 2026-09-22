@@ -31,6 +31,9 @@ class RoborockV1PersistentMapControlCapability extends PersistentMapControlCapab
      */
     async enable() {
         this.robot.mapStore.setPersistentMapEnabled(true);
+
+        // Rooms and restrictions become visible right away instead of on the next map upload
+        this.robot.refreshMapStoreOverlay();
     }
 
     /**
@@ -38,6 +41,9 @@ class RoborockV1PersistentMapControlCapability extends PersistentMapControlCapab
      */
     async disable() {
         this.robot.mapStore.setPersistentMapEnabled(false);
+
+        // Drops the overlaid rooms and restrictions from the map Valetudo currently holds
+        this.robot.refreshMapStoreOverlay();
     }
 }
 

@@ -58,6 +58,43 @@ function buildMap(options = {}) {
     });
 }
 
+/**
+ * Adds the real overlay methods of the Gen 1 robot to a plain robot double, so that the tests
+ * exercise the actual behaviour instead of a stub.
+ *
+ * @param {object} robot
+ * @returns {object}
+ */
+function withOverlay(robot) {
+    for (const method of ["applyMapStoreOverlay", "postProcessMap", "refreshMapStoreOverlay", "restoreLastKnownMap"]) {
+        robot[method] = RoborockV1ValetudoRobot.prototype[method];
+    }
+
+    return robot;
+}
+
+/**
+ * @param {object} options
+ * @param {RoborockV1MapStore} options.store
+ * @param {ValetudoMap} [options.map]
+ * @param {Function} [options.sendCommand]
+ * @returns {object}
+ */
+function buildRobot(options) {
+    const robot = withOverlay({
+        mapStore: options.store,
+        state: {map: options.map ?? buildMap()},
+        mapUpdatedEvents: 0,
+        sendCommand: options.sendCommand ?? (() => Promise.resolve())
+    });
+
+    robot.emitMapUpdated = () => {
+        robot.mapUpdatedEvents++;
+    };
+
+    return robot;
+}
+
 describe("RoborockV1 map pipeline", () => {
     let dir;
     let store;
@@ -93,9 +130,9 @@ describe("RoborockV1 map pipeline", () => {
             }));
 
             const map = buildMap();
-            const robot = {mapStore: store, state: {map: map}};
+            const robot = withOverlay({mapStore: store, state: {map: map}});
 
-            const result = RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
+            const result = robot.postProcessMap(map);
 
             assert.strictEqual(result, map, "postProcessMap mutates and returns the given map");
 
@@ -132,11 +169,11 @@ describe("RoborockV1 map pipeline", () => {
             store.upsertRoom(ROOM_RECT, "Kitchen");
 
             const map = buildMap();
-            const robot = {mapStore: store};
+            const robot = withOverlay({mapStore: store});
 
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
+            robot.postProcessMap(map);
+            robot.postProcessMap(map);
+            robot.postProcessMap(map);
 
             assert.strictEqual(map.layers.filter(layer => layer.type === MapLayer.TYPE.SEGMENT).length, 1);
             assert.strictEqual(map.getSegments().length, 1);
@@ -147,7 +184,7 @@ describe("RoborockV1 map pipeline", () => {
             store.setPersistentMapEnabled(false);
 
             const map = buildMap();
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call({mapStore: store}, map);
+            withOverlay({mapStore: store}).postProcessMap(map);
 
             assert.strictEqual(map.getSegments().length, 0);
             assert.strictEqual(store.getFloorKey(), undefined);
@@ -157,7 +194,7 @@ describe("RoborockV1 map pipeline", () => {
             store.upsertRoom(ROOM_RECT, "Kitchen");
 
             const map = buildMap({defaultMap: true});
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call({mapStore: store}, map);
+            withOverlay({mapStore: store}).postProcessMap(map);
 
             assert.strictEqual(map.getSegments().length, 0);
         });
@@ -177,15 +214,15 @@ describe("RoborockV1 map pipeline", () => {
             };
 
             try {
-                const robot = {mapStore: store};
+                const robot = withOverlay({mapStore: store});
 
-                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, buildMap({chargerPoint: [2565, 2533]}));
+                robot.postProcessMap(buildMap({chargerPoint: [2565, 2533]}));
                 assert.deepStrictEqual(warnings, [], "a one pixel charger jitter must not warn");
 
                 const movedMap = buildMap({chargerPoint: [3500, 3500]});
-                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, movedMap);
-                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, movedMap);
-                RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, movedMap);
+                robot.postProcessMap(movedMap);
+                robot.postProcessMap(movedMap);
+                robot.postProcessMap(movedMap);
 
                 assert.strictEqual(warnings.length, 1, "warn once per observed anchor, not on every map poll");
                 assert.match(warnings[0], /charger anchor moved/);
@@ -200,9 +237,86 @@ describe("RoborockV1 map pipeline", () => {
             store.upsertRoom(ROOM_RECT, "Kitchen");
 
             const map = buildMap({withFloorLayer: false});
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call({mapStore: store}, map);
+            withOverlay({mapStore: store}).postProcessMap(map);
 
             assert.strictEqual(map.getSegments().length, 0);
+        });
+    });
+
+    describe("map state while docked and across restarts", () => {
+        it("remembers the map which was parsed last", () => {
+            store.upsertRoom(ROOM_RECT, "Kitchen");
+
+            buildRobot({store: store}).postProcessMap(buildMap());
+
+            const remembered = store.getLastMap();
+
+            assert.ok(remembered, "the parsed map is remembered");
+
+            const restored = ValetudoMap.DESERIALIZE(JSON.parse(remembered.map));
+
+            assert.deepStrictEqual(restored.getSegments().map(s => s.name), ["Kitchen"]);
+        });
+
+        it("does not remember a map while Valetudo-side persistence is off", () => {
+            store.setPersistentMapEnabled(false);
+
+            buildRobot({store: store}).postProcessMap(buildMap());
+
+            assert.strictEqual(store.getLastMap(), undefined);
+        });
+
+        it("re-overlays the map Valetudo already holds and emits an update", () => {
+            const robot = buildRobot({store: store});
+            const room = store.upsertRoom(ROOM_RECT, "Kitchen");
+
+            assert.strictEqual(robot.state.map.getSegments().length, 0, "the held map does not know the room yet");
+
+            robot.refreshMapStoreOverlay();
+
+            assert.deepStrictEqual(
+                robot.state.map.getSegments().map(s => s.id),
+                [room.id],
+                "the room is drawn without waiting for a fresh map upload"
+            );
+            assert.strictEqual(robot.mapUpdatedEvents, 1);
+        });
+
+        it("leaves Valetudo's placeholder map alone when refreshing", () => {
+            const robot = buildRobot({store: store, map: buildMap({defaultMap: true})});
+
+            store.upsertRoom(ROOM_RECT, "Kitchen");
+
+            robot.refreshMapStoreOverlay();
+
+            assert.strictEqual(robot.state.map.getSegments().length, 0);
+            assert.strictEqual(robot.mapUpdatedEvents, 0);
+        });
+
+        it("restores the remembered map and its rooms into the robot state", () => {
+            store.upsertRoom(ROOM_RECT, "Kitchen");
+
+            buildRobot({store: store}).postProcessMap(buildMap());
+
+            const restartedRobot = buildRobot({store: store, map: buildMap({defaultMap: true})});
+
+            restartedRobot.restoreLastKnownMap();
+
+            assert.strictEqual(
+                restartedRobot.state.map.metaData.defaultMap,
+                undefined,
+                "the placeholder map was replaced by the last known map"
+            );
+            assert.deepStrictEqual(restartedRobot.state.map.getSegments().map(s => s.name), ["Kitchen"]);
+        });
+
+        it("keeps the current map when nothing was remembered", () => {
+            const map = buildMap({defaultMap: true});
+            const robot = buildRobot({store: store, map: map});
+
+            robot.restoreLastKnownMap();
+
+            assert.strictEqual(robot.state.map, map);
         });
     });
 
@@ -212,18 +326,17 @@ describe("RoborockV1 map pipeline", () => {
 
             const map = buildMap();
             const sentCommands = [];
-            const robot = {
+            const robot = withOverlay({
                 mapStore: store,
                 state: {map: map},
-                pollMap: () => {},
                 sendCommand: (method, params) => {
                     sentCommands.push({method: method, params: params});
 
                     return Promise.resolve();
                 }
-            };
+            });
 
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
+            robot.postProcessMap(map);
 
             const segments = map.getSegments();
             assert.strictEqual(segments.length, 1);
@@ -241,24 +354,25 @@ describe("RoborockV1 map pipeline", () => {
 
         it("creates a segment which is then listed and cleanable", async () => {
             const sentCommands = [];
-            const robot = {
-                mapStore: store,
-                pollMap: () => {},
+            const robot = buildRobot({
+                store: store,
                 sendCommand: (method, params) => {
                     sentCommands.push({method: method, params: params});
 
                     return Promise.resolve();
                 }
-            };
+            });
 
             const segmentationCapability = new capabilities.RoborockV1MapSegmentationCapability({robot: robot});
             const segment = await segmentationCapability.createSegment(ROOM_RECT, "Living");
 
             assert.strictEqual(segment.name, "Living");
-
-            const map = buildMap();
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
-            assert.deepStrictEqual(map.getSegments().map(s => s.name), ["Living"]);
+            assert.deepStrictEqual(
+                robot.state.map.getSegments().map(s => s.name),
+                ["Living"],
+                "the room shows up on the map Valetudo already holds, without a fresh map upload"
+            );
+            assert.strictEqual(robot.mapUpdatedEvents, 1, "the frontend is told about the new map");
 
             await segmentationCapability.executeSegmentAction([segment], {});
             assert.strictEqual(sentCommands.length, 1);
@@ -311,28 +425,21 @@ describe("RoborockV1 map pipeline", () => {
             const room = store.upsertRoom(ROOM_RECT, "Kitchen");
 
             const map = buildMap();
-            let pollMapCalls = 0;
-            const robot = {
-                mapStore: store,
-                state: {map: map},
-                pollMap: () => {
-                    pollMapCalls++;
-                }
-            };
+            const robot = buildRobot({store: store, map: map});
 
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, map);
+            robot.postProcessMap(map);
             assert.strictEqual(map.getSegments().length, 1, "the room is drawn on the map");
 
             const capability = new capabilities.RoborockV1MapSegmentationCapability({robot: robot});
             await capability.deleteSegment(new ValetudoMapSegment({id: room.id}));
 
-            assert.strictEqual(pollMapCalls, 1, "the map is polled so that the overlay drops the room");
             assert.deepStrictEqual(await capability.getSegments(), [], "the store no longer lists the room");
-
-            const mapAfterDeletion = buildMap();
-            RoborockV1ValetudoRobot.prototype.postProcessMap.call(robot, mapAfterDeletion);
-
-            assert.strictEqual(mapAfterDeletion.getSegments().length, 0);
+            assert.strictEqual(
+                robot.state.map.getSegments().length,
+                0,
+                "the room is dropped from the map Valetudo already holds, without a fresh map upload"
+            );
+            assert.strictEqual(robot.mapUpdatedEvents, 1, "the frontend is told about the map change");
 
             await assert.rejects(
                 () => capability.deleteSegment(new ValetudoMapSegment({id: room.id})),
@@ -382,8 +489,7 @@ describe("RoborockV1 map pipeline", () => {
             const robot = {
                 mapStore: store,
                 state: {map: map},
-                emitMapUpdated: () => {},
-                pollMap: () => {}
+                emitMapUpdated: () => {}
             };
 
             store.addSnapshot(JSON.stringify(map), "test");
